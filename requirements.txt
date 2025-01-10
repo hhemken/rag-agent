@@ -1,8 +1,9 @@
-pypdf
+boto3
+chromadb
+flask
 langchain
-langchain.community
 langchain-chroma
 langchain-ollama
-chromadb # Vector storage
+langchain.community
+pypdf
 pytest
-boto3

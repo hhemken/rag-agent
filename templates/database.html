@@ -1,0 +1,53 @@
+<!-- templates/database.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <h1 class="text-3xl font-bold mb-4">Database Management</h1>
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1">Chroma Path</label>
+            <input type="text" id="chromaPath" class="w-full border rounded p-2">
+        </div>
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1">Data Path</label>
+            <input type="text" id="dataPath" class="w-full border rounded p-2">
+        </div>
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1">Reset Database</label>
+            <input type="checkbox" id="resetDb">
+        </div>
+        <button id="processDb" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+            Process Database
+        </button>
+        <div id="status" class="mt-4"></div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    const config = await axios.get('/api/get_config');
+    document.getElementById('chromaPath').value = config.data.CHROMA_PATH;
+    document.getElementById('dataPath').value = config.data.DATA_PATH;
+
+    document.getElementById('processDb').addEventListener('click', async () => {
+        const status = document.getElementById('status');
+        status.textContent = 'Processing...';
+
+        try {
+            await axios.post('/api/update_config', {
+                CHROMA_PATH: document.getElementById('chromaPath').value,
+                DATA_PATH: document.getElementById('dataPath').value
+            });
+
+            const result = await axios.post('/api/process_database', {
+                reset: document.getElementById('resetDb').checked
+            });
+
+            status.textContent = result.data.message;
+        } catch (error) {
+            status.textContent = `Error: ${error.response?.data?.message || error.message}`;
+        }
+    });
+});
+</script>
+{% endblock %}
