@@ -4,6 +4,10 @@
     <h1 class="text-3xl font-bold mb-4">Chat Interface</h1>
     <div class="bg-white rounded-lg shadow p-6">
         <div class="mb-4">
+            <label class="block text-sm font-medium mb-1">Database Selection</label>
+            <select id="dbSelect" class="w-full border rounded p-2"></select>
+        </div>
+        <div class="mb-4">
             <label class="block text-sm font-medium mb-1">Model Selection</label>
             <select id="modelSelect" class="w-full border rounded p-2"></select>
         </div>
@@ -11,44 +15,71 @@
             <label class="block text-sm font-medium mb-1">Question</label>
             <textarea id="question" class="w-full border rounded p-2" rows="4"></textarea>
         </div>
-        <button id="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            Ask Question
-        </button>
+        <button id="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Ask Question</button>
         <div class="mt-4">
             <label class="block text-sm font-medium mb-1">Response</label>
             <div id="response" class="border rounded p-2 min-h-[100px] whitespace-pre-wrap"></div>
+        </div>
+        <div class="mt-4">
+            <label class="block text-sm font-medium mb-1">Sources</label>
+            <div id="sources" class="border rounded p-2 min-h-[50px] whitespace-pre-wrap font-mono text-sm"></div>
         </div>
     </div>
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', async () => {
-    const models = await axios.get('/api/list_models');
-    const modelSelect = document.getElementById('modelSelect');
-    models.data.forEach(model => {
-        const option = document.createElement('option');
-        option.value = option.textContent = model;
-        modelSelect.appendChild(option);
-    });
-    
-    document.getElementById('submit').addEventListener('click', async () => {
-        const response = document.getElementById('response');
-        response.textContent = 'Processing...';
-        
-        try {
-            await axios.post('/api/update_config', {
-                LLM_TO_USE: document.getElementById('modelSelect').value
-            });
-            
-            const result = await axios.post('/api/query', {
-                question: document.getElementById('question').value
-            });
-            
-            response.textContent = result.data.full_response || result.data.response;
-        } catch (error) {
-            response.textContent = `Error: ${error.response?.data?.message || error.message}`;
-        }
-    });
-});
-</script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const [models, databases] = await Promise.all([
+            axios.get('/api/list_models'),
+            axios.get('/api/list_databases')
+        ]);
+
+        const modelSelect = document.getElementById('modelSelect');
+        models.data.forEach(model => {
+            const option = document.createElement('option');
+            option.value = option.textContent = model;
+            modelSelect.appendChild(option);
+        });
+
+        const dbSelect = document.getElementById('dbSelect');
+        databases.data.forEach(db => {
+            const option = document.createElement('option');
+            option.value = option.textContent = db;
+            dbSelect.appendChild(option);
+        });
+
+        document.getElementById('submit').addEventListener('click', async () => {
+            const response = document.getElementById('response');
+            const sources = document.getElementById('sources');
+            response.textContent = 'Processing...';
+            sources.textContent = '';
+
+            try {
+                await axios.post('/api/update_config', {
+                    LLM_TO_USE: modelSelect.value,
+                    CHROMA_PATH: dbSelect.value
+                });
+
+                const result = await axios.post('/api/query', {
+                    question: document.getElementById('question').value
+                });
+
+                const fullResponse = result.data.response;
+                if (fullResponse.includes('Sources:')) {
+                    const [responseText, sourcesText] = fullResponse.split('Sources:');
+                    response.textContent = responseText.replace('Response:', '').trim();
+                    sources.textContent = sourcesText.trim()
+                        .replace(/[\[\]']/g, '')  // Remove brackets and quotes
+                        .split(',')
+                        .map(s => s.trim())
+                        .join('\n');
+                } else {
+                    response.textContent = fullResponse.trim();
+                    sources.textContent = 'No sources available';
+                }
+            } catch (error) {
+                response.textContent = `Error: ${error.response?.data?.message || error.message}`;
+            }
+        });
+    });</script>
 {% endblock %}

@@ -6,7 +6,7 @@ from langchain_community.document_loaders import PyPDFDirectoryLoader, PyPDFLoad
 from get_embedding_function import get_embedding_function
 from langchain_chroma import Chroma
 import shutil
-
+from ollama import Client
 
 app = Flask(__name__)
 
@@ -45,6 +45,7 @@ def update_config():
 @app.route('/api/get_config')
 def get_config():
     return jsonify(config)
+
 
 @app.route('/api/process_database', methods=['POST'])
 def process_database():
@@ -90,11 +91,10 @@ def query():
 
     try:
         response = query_rag(question)
-        # Pass the full response including sources
+        # Just return the full response without trying to split it
         return jsonify({
             "status": "success",
-            "response": response,
-            "full_response": response  # Include this for complete output
+            "response": response,  # The full response including sources
         })
     except Exception as e:
         return jsonify({
@@ -102,14 +102,35 @@ def query():
             "message": str(e)
         }), 500
 
+
+# @app.route('/api/list_models')
+# def list_models():
+#     # You might want to implement actual model discovery
+#     return jsonify([
+#         "llama3.2:3b",
+#         "mistral"
+#     ])
+
 @app.route('/api/list_models')
 def list_models():
-    # You might want to implement actual model discovery
-    return jsonify([
-        "llama3.2:3b",
-        "mistral"
-    ])
-
+    try:
+        client = Client(host='http://localhost:11434')
+        models = client.list()
+        print(f"Found models: {models}")  # Debug output
+        model_names = [model['name'] for model in models['models']]  # Access 'models' key
+        return jsonify(model_names)
+    except Exception as e:
+        print(f"Error listing models: {str(e)}")
+        return jsonify(["llama3.2:3b", "mistral"])  # Fallback default models
+@app.route('/api/list_databases')
+def list_databases():
+    try:
+        databases = [d for d in os.listdir() if os.path.isdir(d) and os.path.exists(os.path.join(d, 'chroma.sqlite3'))]
+        print(f"Found databases: {databases}")  # Debug output
+        return jsonify(databases)
+    except Exception as e:
+        print(f"Error listing databases: {str(e)}")
+        return jsonify([])
 
 if __name__ == '__main__':
     app.run(debug=True)
