@@ -115,18 +115,55 @@ def query():
 def list_models():
     try:
         client = Client(host='http://localhost:11434')
-        models = client.list()
-        print(f"Found models: {models}")  # Debug output
-        model_names = [model['name'] for model in models['models']]  # Access 'models' key
+        response = client.list()
+
+        # Debug logging
+        print(f"Raw Ollama response: {response}")
+
+        model_names = []
+
+        # Convert response to string and split into individual Model entries
+        response_str = str(response)
+        if response_str.startswith('models=['):
+            # Remove the 'models=[' prefix and trailing ']'
+            models_str = response_str[7:-1]
+
+            # Split by '), Model(' to get individual model entries
+            model_entries = models_str.split('), Model(')
+
+            for entry in model_entries:
+                # Clean up the entry
+                entry = entry.replace('Model(', '').replace(')', '')
+
+                # Find the model name
+                if 'model=' in entry:
+                    # Extract the text between model=' and the next comma or quote
+                    model_name = entry.split('model=')[1].split(',')[0].strip("'")
+                    model_names.append(model_name)
+
+        if not model_names:
+            print("No valid models found in response")
+            return jsonify(["No models available"])
+
+        print(f"Successfully extracted model names: {model_names}")
         return jsonify(model_names)
+
     except Exception as e:
         print(f"Error listing models: {str(e)}")
-        return jsonify(["llama3.2:3b", "mistral"])  # Fallback default models
+        # Include the error message in the response for debugging
+        return jsonify([f"Error: {str(e)}"])
+
 @app.route('/api/list_databases')
 def list_databases():
     try:
-        databases = [d for d in os.listdir() if os.path.isdir(d) and os.path.exists(os.path.join(d, 'chroma.sqlite3'))]
-        print(f"Found databases: {databases}")  # Debug output
+        # Look for directories containing chroma.sqlite3
+        databases = []
+        for item in os.listdir():
+            db_path = os.path.join(item, 'chroma.sqlite3')
+            if os.path.isdir(item) and os.path.exists(db_path):
+                databases.append(item)
+
+        print(f"Found databases: {databases}")
         return jsonify(databases)
     except Exception as e:
         print(f"Error listing databases: {str(e)}")
