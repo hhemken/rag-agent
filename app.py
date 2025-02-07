@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import os
-from populate_database import clear_database, load_documents, split_documents, add_to_chroma
+from populate_database import clear_database, load_documents, split_documents, add_to_chroma, add_documents_to_chroma
 from query_data import query_rag
 from langchain_community.document_loaders import PyPDFDirectoryLoader, PyPDFLoader
 from get_embedding_function import get_embedding_function
@@ -51,33 +51,58 @@ def get_config():
 def process_database():
     data = request.json
     should_reset = data.get('reset', False)
+    chunking_method = data.get('chunking_method', 'recursive')
 
     try:
+        # Important: Move database reset before ANY Chroma operations
         if should_reset:
+            print("Resetting database...")
             if os.path.exists(config['CHROMA_PATH']):
                 shutil.rmtree(config['CHROMA_PATH'])
+                print(f"Deleted database at {config['CHROMA_PATH']}")
 
-        # Use config['DATA_PATH'] instead of the constant
+        # Get chunking parameters based on method
+        chunking_params = {}
+        if chunking_method == 'recursive':
+            chunking_params = {
+                'chunk_size': data.get('chunk_size', 800),
+                'chunk_overlap': data.get('chunk_overlap', 80)
+            }
+        else:  # semantic
+            chunking_params = {
+                'n_clusters': data.get('n_clusters'),
+                'min_chunk_size': data.get('min_chunk_size', 100),
+                'max_chunk_size': data.get('max_chunk_size', 1000)
+            }
+
+        # Load and process documents
         documents = []
         for document in os.listdir(config['DATA_PATH']):
             document_path = os.path.abspath(os.path.join(config['DATA_PATH'], document))
             if document.endswith(".pdf"):
-                print(f'loading: {document_path}')
+                print(f'Loading: {document_path}')
                 loader = PyPDFLoader(document_path)
                 documents.extend(loader.load())
 
-        chunks = split_documents(documents)
+        print(f"Using {chunking_method} chunking with parameters: {chunking_params}")
+        chunks = split_documents(documents,
+                               chunking_method=chunking_method,
+                               **chunking_params)
 
-        # Pass the CHROMA_PATH from config
+        # Create new database instance AFTER potential reset
         db = Chroma(persist_directory=config['CHROMA_PATH'],
-                    embedding_function=get_embedding_function())
-        add_to_chroma(chunks)
+                   embedding_function=get_embedding_function())
+
+        # Modified add_to_chroma function that takes the db instance
+        add_documents_to_chroma(chunks, db)
 
         return jsonify({
             "status": "success",
-            "message": "Database processed successfully"
+            "message": f"Database processed successfully using {chunking_method} chunking",
+            "num_chunks": len(chunks)
         })
     except Exception as e:
+        print(f"Error in process_database: {str(e)}")
         return jsonify({
             "status": "error",
             "message": str(e)

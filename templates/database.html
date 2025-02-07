@@ -1,4 +1,3 @@
-<!-- templates/database.html -->
 {% extends "base.html" %}
 {% block content %}
 <div class="max-w-2xl mx-auto">
@@ -12,10 +11,52 @@
             <label class="block text-sm font-medium mb-1">Data Path</label>
             <input type="text" id="dataPath" class="w-full border rounded p-2">
         </div>
+        
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1">Chunking Method</label>
+            <select id="chunkingMethod" class="w-full border rounded p-2">
+                <option value="recursive">Recursive Character</option>
+                <option value="semantic">Semantic Clustering</option>
+            </select>
+        </div>
+        
+        <!-- Recursive chunking options -->
+        <div id="recursiveOptions" class="mb-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Chunk Size</label>
+                    <input type="number" id="chunkSize" value="800" class="w-full border rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Chunk Overlap</label>
+                    <input type="number" id="chunkOverlap" value="80" class="w-full border rounded p-2">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Semantic chunking options -->
+        <div id="semanticOptions" class="mb-4 hidden">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Number of Clusters</label>
+                    <input type="number" id="nClusters" value="10" class="w-full border rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Min Chunk Size</label>
+                    <input type="number" id="minChunkSize" value="100" class="w-full border rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Max Chunk Size</label>
+                    <input type="number" id="maxChunkSize" value="1000" class="w-full border rounded p-2">
+                </div>
+            </div>
+        </div>
+        
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1">Reset Database</label>
             <input type="checkbox" id="resetDb">
         </div>
+        
         <button id="processDb" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
             Process Database
         </button>
@@ -28,23 +69,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     const config = await axios.get('/api/get_config');
     document.getElementById('chromaPath').value = config.data.CHROMA_PATH;
     document.getElementById('dataPath').value = config.data.DATA_PATH;
+    
+    // Show/hide chunking options based on selected method
+    document.getElementById('chunkingMethod').addEventListener('change', (e) => {
+        const recursive = document.getElementById('recursiveOptions');
+        const semantic = document.getElementById('semanticOptions');
+        if (e.target.value === 'recursive') {
+            recursive.classList.remove('hidden');
+            semantic.classList.add('hidden');
+        } else {
+            recursive.classList.add('hidden');
+            semantic.classList.remove('hidden');
+        }
+    });
 
     document.getElementById('processDb').addEventListener('click', async () => {
         const status = document.getElementById('status');
         status.textContent = 'Processing...';
-
+        
         try {
             await axios.post('/api/update_config', {
                 CHROMA_PATH: document.getElementById('chromaPath').value,
                 DATA_PATH: document.getElementById('dataPath').value
             });
+            
+            const chunkingMethod = document.getElementById('chunkingMethod').value;
+            const params = {
+                reset: document.getElementById('resetDb').checked,
+                chunking_method: chunkingMethod,
+            };
+            
+            // Only include relevant parameters based on chunking method
+            if (chunkingMethod === 'recursive') {
+                params.chunk_size = parseInt(document.getElementById('chunkSize').value) || 800;
+                params.chunk_overlap = parseInt(document.getElementById('chunkOverlap').value) || 80;
+            } else {
+                const nClusters = parseInt(document.getElementById('nClusters').value);
+                if (!isNaN(nClusters)) {
+                    params.n_clusters = nClusters;
+                }
+                params.min_chunk_size = parseInt(document.getElementById('minChunkSize').value) || 100;
+                params.max_chunk_size = parseInt(document.getElementById('maxChunkSize').value) || 1000;
+            }
 
-            const result = await axios.post('/api/process_database', {
-                reset: document.getElementById('resetDb').checked
-            });
-
-            status.textContent = result.data.message;
+            console.log('Sending parameters:', params);  // Debug log
+            const result = await axios.post('/api/process_database', params);
+            status.textContent = `${result.data.message} (${result.data.num_chunks} chunks created)`;
         } catch (error) {
+            console.error('Error:', error);  // Debug log
             status.textContent = `Error: ${error.response?.data?.message || error.message}`;
         }
     });
